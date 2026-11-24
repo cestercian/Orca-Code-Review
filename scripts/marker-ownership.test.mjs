@@ -25,6 +25,13 @@ import assert from "node:assert/strict";
 
 import { step, actionSteps, loadAction, runBashStep, stub, runGithubScript, fakeCore, ROOT } from "./test-helpers/action-yaml.mjs";
 
+// runBashStep runs only the `run:` block; the settle step's planner env must be supplied.
+const SETTLE_PLANNER_ENV = {
+  AUTHORITY: path.join(ROOT, "scripts", "authority.mjs"),
+  RUN_ID: "1",
+  WORKFLOW: "OrcaCode Review",
+};
+
 let dir;
 before(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "markers-"));
@@ -302,11 +309,23 @@ describe("one identity funnel (scripts/identity.mjs)", () => {
 case "$*" in
   "api user --jq .type") echo Bot ;;
   "api user --jq .login") exit 1 ;;
+  # #39: clearEyes needs authority (reviewed head == live head); old stub returned 7 for every --jq.
+  *head.sha*) echo s ;;
+  *workflow_runs*) echo '[]' ;;
   *--jq*) echo 7 ;;
 esac`);
     const r = runBashStep(step("Settle the review reactions").run, {
       stubDir,
-      env: { BOT_LOGIN: "", RUNNER_TEMP: runnerTemp, REPO: "acme/widgets", PR_NUMBER: "7", HEAD_SHA: "s", EVENT_NAME: "pull_request_target", GH_TOKEN: "t" },
+      env: {
+        ...SETTLE_PLANNER_ENV,
+        BOT_LOGIN: "",
+        RUNNER_TEMP: runnerTemp,
+        REPO: "acme/widgets",
+        PR_NUMBER: "7",
+        HEAD_SHA: "s",
+        EVENT_NAME: "pull_request_target",
+        GH_TOKEN: "t",
+      },
     });
     assert.equal(r.status, 0, r.stderr);
     const calls = fs.readFileSync(log, "utf8");
@@ -324,7 +343,16 @@ case "$*" in
 esac`);
     const r = runBashStep(step("Settle the review reactions").run, {
       stubDir,
-      env: { BOT_LOGIN: "", RUNNER_TEMP: fresh(), REPO: "acme/widgets", PR_NUMBER: "7", HEAD_SHA: "s", EVENT_NAME: "pull_request_target", GH_TOKEN: "t" },
+      env: {
+        ...SETTLE_PLANNER_ENV,
+        BOT_LOGIN: "",
+        RUNNER_TEMP: fresh(),
+        REPO: "acme/widgets",
+        PR_NUMBER: "7",
+        HEAD_SHA: "s",
+        EVENT_NAME: "pull_request_target",
+        GH_TOKEN: "t",
+      },
     });
     assert.equal(r.status, 0, r.stderr);
     assert.doesNotMatch(fs.readFileSync(log, "utf8"), /DELETE/);

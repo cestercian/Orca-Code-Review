@@ -2480,6 +2480,12 @@ runs:
         if [ -f "$RUNNER_TEMP/cr-actor" ]; then
           CREATED_BY=$(tr -d '\r\n' < "$RUNNER_TEMP/cr-actor")
         fi
+        if [ -z "$CREATED_BY" ] && [ -s "$RUNNER_TEMP/cr-identity" ]; then
+          CREATED_BY=$(tr -d '\r\n' < "$RUNNER_TEMP/cr-identity")
+        fi
+        if [ -z "$CREATED_BY" ] && [ -n "${BOT_LOGIN:-}" ]; then
+          CREATED_BY=$(printf '%s' "$BOT_LOGIN" | tr -d '\r\n')
+        fi
         APP_SLUG=$(gh api "repos/$REPO/installation" --jq .app_slug 2>/dev/null) || APP_SLUG=""
         CURRENT_SHA=""
         if [ -n "${PR_NUMBER:-}" ]; then
@@ -2515,14 +2521,31 @@ runs:
 
         field() { node -e 'const p=JSON.parse(require("fs").readFileSync(process.env.PLAN_FILE,"utf8")); const v=p[process.argv[1]]; if (typeof v==="boolean") process.exit(v?0:1); process.stdout.write(String(v??""))' "$1"; }
         export PLAN_FILE
-        ME=$(field actor)
+        # WHOSE 👀 (scripts/identity.mjs + cr-actor): same funnel main used
+        # before authority — resolved login, recorded post identity, login from
+        # the 👀 create — then the planner's actor only if all of those are empty.
+        # Whether we may clear still comes from clearEyes; a clean verdict only
+        # from publishClean in the post step.
+        ME="${BOT_LOGIN:-}"
+        if [ -z "$ME" ] && [ -f "$RUNNER_TEMP/cr-actor" ]; then
+          ME=$(tr -d '\r\n' < "$RUNNER_TEMP/cr-actor")
+        fi
+        if [ -z "$ME" ] && [ -s "$RUNNER_TEMP/cr-identity" ]; then
+          ME=$(tr -d '\r\n' < "$RUNNER_TEMP/cr-identity")
+        fi
+        case "$ME" in
+          ""|*[!A-Za-z0-9\[\]-]*) ME="" ;;
+        esac
+        if [ -z "$ME" ]; then
+          ME=$(field actor)
+        fi
 
         # ------------------------------------------------------------------
         # 👀 — it said "I am looking at this", and the run has stopped looking.
         # Only the authoritative run clears: a stale finish must not take the
         # acknowledgement off a newer run that is still working, and must not
-        # match the wrong login (the planner resolved custom-app[bot] from
-        # the create-response or the installation slug).
+        # match the wrong login (the funnel and planner agree on whose reaction
+        # this is — custom-app[bot], not a guessed github-actions[bot]).
         clear_eyes() {
           [ -n "$ME" ] || { echo "identity unknown — leaving 👀 at $1"; return 0; }
           ids=$(gh api "$1" --paginate \
