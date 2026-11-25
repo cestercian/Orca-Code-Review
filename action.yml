@@ -1884,7 +1884,14 @@ runs:
               const { data } = await github.rest.actions.listWorkflowRunsForRepo({
                 ...repo, head_sha: sha, per_page: 50,
               });
-              siblings = JSON.stringify((data.workflow_runs || []).map((r) => ({ id: r.id, name: r.name })));
+              siblings = JSON.stringify(
+                (data.workflow_runs || []).map((r) => ({
+                  id: r.id,
+                  name: r.name,
+                  status: r.status,
+                  conclusion: r.conclusion,
+                })),
+              );
             } catch (e) {
               // actions:read is not in the example workflow. Head match still
               // answers finding 3; sibling comparison is best-effort.
@@ -2494,7 +2501,7 @@ runs:
         SIBLINGS='[]'
         if [ -n "${HEAD_SHA:-}" ]; then
           SIBLINGS=$(gh api "repos/$REPO/actions/runs?head_sha=${HEAD_SHA}&per_page=50" \
-            --jq '[.workflow_runs[] | {id:.id, name:.name}]' 2>/dev/null) || SIBLINGS='[]'
+            --jq '[.workflow_runs[] | {id:.id, name:.name, status:.status, conclusion:.conclusion}]' 2>/dev/null) || SIBLINGS='[]'
         fi
         CLEAN_FLAG=""
         [ -f "$RUNNER_TEMP/cr-clean" ] && CLEAN_FLAG="--clean"

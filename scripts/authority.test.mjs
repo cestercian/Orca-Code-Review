@@ -189,6 +189,28 @@ describe("isAuthoritative / latest-run", () => {
   test("relevantSiblings drops nameless-id-less rows and keeps pre-scoped {id} rows", () => {
     assert.deepEqual(relevantSiblings([{ id: 1 }, { name: "x" }, null], { workflow: "x" }), [{ id: 1 }]);
   });
+
+  test("a newer sibling that was cancelled does not steal authority from the surviving run", () => {
+    assert.equal(
+      isAuthoritative({
+        reviewedSha: head,
+        currentSha: head,
+        thisRunId: "10",
+        siblingRuns: [
+          { id: 10 },
+          { id: 11, status: "completed", conclusion: "cancelled" },
+        ],
+      }),
+      true,
+    );
+    assert.equal(
+      relevantSiblings([
+        { id: 10 },
+        { id: 11, status: "completed", conclusion: "cancelled" },
+      ]).length,
+      1,
+    );
+  });
 });
 
 describe("settle — one plan for publication and reactions", () => {
@@ -244,6 +266,19 @@ describe("settle — one plan for publication and reactions", () => {
     assert.equal(plan.clearEyes, false);
     assert.equal(plan.addThumb, false);
     assert.match(plan.reason, /newer run \(9\)/);
+  });
+
+  test("surviving run stays authoritative when the only newer sibling was cancelled", () => {
+    const plan = settle({
+      ...current,
+      thisRunId: "5",
+      siblingRuns: [{ id: 9, status: "completed", conclusion: "cancelled" }],
+      clean: true,
+    });
+    assert.equal(plan.authoritative, true);
+    assert.equal(plan.publishClean, true);
+    assert.equal(plan.clearEyes, true);
+    assert.equal(plan.addThumb, true);
   });
 
   test("a User token never manages reactions, but an authoritative one may still publish", () => {

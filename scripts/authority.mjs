@@ -68,6 +68,14 @@ export function tokenIsUser(tokenType) {
   return live(tokenType) === "User";
 }
 
+// A cancelled sibling never reaches its always() settle step — it cannot be
+// authoritative and must not veto the surviving run on the same head.
+function siblingCanSettle(r) {
+  const status = live(r?.status).toLowerCase();
+  const conclusion = live(r?.conclusion).toLowerCase();
+  return status !== "cancelled" && conclusion !== "cancelled";
+}
+
 // Sibling runs already scoped by the driver (same workflow / same PR head),
 // or carrying a `name` we can filter with --workflow. A CI run with a
 // higher id on a different workflow must not steal authority.
@@ -76,6 +84,7 @@ export function relevantSiblings(siblingRuns, { workflow } = {}) {
   const wf = live(workflow);
   return runs.filter((r) => {
     if (!r || r.id == null || r.id === "") return false;
+    if (!siblingCanSettle(r)) return false;
     if (!wf || !r.name) return true;
     return r.name === wf;
   });
