@@ -30,6 +30,7 @@ import {
   isAuthoritative,
   notAuthoritativeReason,
   relevantSiblings,
+  siblingCanSettle,
   settle,
 } from "./authority.mjs";
 
@@ -211,6 +212,26 @@ describe("isAuthoritative / latest-run", () => {
       1,
     );
   });
+
+  test("a newer job-skipped sibling (completed/skipped) does not steal authority", () => {
+    assert.equal(
+      isAuthoritative({
+        reviewedSha: head,
+        currentSha: head,
+        thisRunId: "10",
+        siblingRuns: [
+          { id: 10 },
+          { id: 12, status: "completed", conclusion: "skipped" },
+        ],
+      }),
+      true,
+    );
+    assert.equal(siblingCanSettle({ status: "completed", conclusion: "skipped" }), false);
+    assert.equal(siblingCanSettle({ status: "in_progress" }), true);
+    assert.equal(siblingCanSettle({ status: "completed", conclusion: "success" }), true);
+    assert.equal(siblingCanSettle({ status: "completed", conclusion: "neutral" }), false);
+    assert.equal(siblingCanSettle({ id: 3 }), true);
+  });
 });
 
 describe("settle — one plan for publication and reactions", () => {
@@ -273,6 +294,19 @@ describe("settle — one plan for publication and reactions", () => {
       ...current,
       thisRunId: "5",
       siblingRuns: [{ id: 9, status: "completed", conclusion: "cancelled" }],
+      clean: true,
+    });
+    assert.equal(plan.authoritative, true);
+    assert.equal(plan.publishClean, true);
+    assert.equal(plan.clearEyes, true);
+    assert.equal(plan.addThumb, true);
+  });
+
+  test("surviving run stays authoritative when the only newer sibling was job-skipped", () => {
+    const plan = settle({
+      ...current,
+      thisRunId: "5",
+      siblingRuns: [{ id: 9, status: "completed", conclusion: "skipped" }],
       clean: true,
     });
     assert.equal(plan.authoritative, true);

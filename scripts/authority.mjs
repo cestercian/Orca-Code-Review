@@ -68,12 +68,32 @@ export function tokenIsUser(tokenType) {
   return live(tokenType) === "User";
 }
 
-// A cancelled sibling never reaches its always() settle step — it cannot be
-// authoritative and must not veto the surviving run on the same head.
-function siblingCanSettle(r) {
+// Only siblings that might still reach always() settle can veto a run on the
+// same head. Job-level skips and hard cancels finish with conclusion skipped
+// or cancelled; they must not block the surviving review run.
+const SIBLING_ACTIVE_STATUSES = new Set([
+  "queued",
+  "in_progress",
+  "waiting",
+  "requested",
+  "pending",
+]);
+
+const SIBLING_RAN_CONCLUSIONS = new Set([
+  "success",
+  "failure",
+  "timed_out",
+  "action_required",
+]);
+
+export function siblingCanSettle(r) {
   const status = live(r?.status).toLowerCase();
   const conclusion = live(r?.conclusion).toLowerCase();
-  return status !== "cancelled" && conclusion !== "cancelled";
+  // The driver may only pass {id, name} when actions:read is missing.
+  if (!status && !conclusion) return true;
+  if (status && SIBLING_ACTIVE_STATUSES.has(status)) return true;
+  if (conclusion && SIBLING_RAN_CONCLUSIONS.has(conclusion)) return true;
+  return false;
 }
 
 // Sibling runs already scoped by the driver (same workflow / same PR head),
